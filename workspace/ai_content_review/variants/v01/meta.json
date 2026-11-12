@@ -1,0 +1,7 @@
+{
+  "id": "v01",
+  "parent": null,
+  "note": "first generated version: 10 tools (rules x5, results x2, suggestions x2, queue), shared helper, 75 unit+kernel tests",
+  "created_at": "2026-11-02T15:06:46Z",
+  "hash": "16d119b764cf8367"
+}

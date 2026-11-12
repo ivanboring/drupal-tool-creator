@@ -1,0 +1,24 @@
+name: drupal-tool-creator
+type: drupal11
+# The repo root is the project, so the coding agents in the web container see the skills,
+# workspace/ and memory/. Drupal itself lives in drupal/ and is disposable: it is reset to a
+# baseline before every eval.
+docroot: drupal/web
+composer_root: drupal
+php_version: "8.3"
+webserver_type: nginx-fpm
+database:
+  type: mariadb
+  version: "11.8"
+composer_version: "2"
+nodejs_version: "22"
+use_dns_when_possible: true
+# *.localhost resolves to loopback on every modern OS, so no /etc/hosts entry (and no sudo) is needed.
+project_tld: localhost
+disable_upload_dirs_warning: true
+webimage_extra_packages: [python3, python3-yaml, python3-markdown, rsync]
+web_environment:
+  # Kernel/functional tests for the generated tools run in a prefixed schema of the same database.
+  - SIMPLETEST_DB=mysql://db:db@db/db
+  - SIMPLETEST_BASE_URL=http://web
+  - BROWSERTEST_OUTPUT_DIRECTORY=/tmp

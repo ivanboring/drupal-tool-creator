@@ -1,0 +1,7 @@
+{
+  "id": "v12",
+  "parent": "v08",
+  "note": "loop 13: list_review_rules no longer says to call it first; writes take names as written (fewer calls)",
+  "created_at": "2026-11-04T07:42:30Z",
+  "hash": "9693b399c599b3c9"
+}

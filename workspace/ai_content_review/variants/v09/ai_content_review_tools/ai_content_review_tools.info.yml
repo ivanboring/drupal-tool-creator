@@ -1,0 +1,8 @@
+name: 'AI Content Review tools'
+type: module
+description: 'Tool API plugins for AI Content Review.'
+package: Tools
+core_version_requirement: ^10 || ^11
+dependencies:
+  - ai_content_review:ai_content_review
+  - tool:tool

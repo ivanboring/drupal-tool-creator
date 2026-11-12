@@ -1,0 +1,7 @@
+{
+  "id": "v08",
+  "parent": "v07",
+  "note": "loop8: rule lookups drop the generic nouns review(s)/rule(s) when nothing matches (\"Legal review\" -> unique partial match \"legal\"), still unique-only",
+  "created_at": "2026-11-03T14:39:53Z",
+  "hash": "60f17349a4b5960d"
+}

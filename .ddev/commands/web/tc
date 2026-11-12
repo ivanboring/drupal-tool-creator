@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+## Description: The tool creator harness: module baselines, variants, resets, evals (run `ddev tc help`)
+## Usage: tc <command> [args]
+## Example: "ddev tc eval redirect --variant v01 --agent fc:ollama/qwen3-coder:30b"
+## ExecRaw: true
+cd /var/www/html && exec python3 -I toolcreator/__main__.py "$@"

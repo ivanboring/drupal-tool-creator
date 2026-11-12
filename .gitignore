@@ -1,0 +1,26 @@
+# The disposable site and its baselines
+/drupal/
+/baselines/
+/logs/
+# Local credentials and endpoints
+/.env
+# Lessons the skills collect across modules (local to each checkout)
+/memory/*
+!/memory/.gitkeep
+# Notes for a blog post about the lab (local only)
+/blog/
+# Per-module caches and run output (keep scenarios, variants, notes)
+/workspace/*/.cache/
+/workspace/*/runs/
+/workspace/*/autosave/
+# Generated HTML pages (rebuilt by every eval; they link into runs/)
+/workspace/index.html
+/workspace/*/index.html
+# Modules kept local (redirect was only a smoke test of the harness)
+/workspace/redirect/
+# Skills linked from the installed tool module
+/.agents/skills/create-tool-plugins
+/.agents/skills/use-drupal-tools
+/.claude/skills/create-tool-plugins
+/.claude/skills/use-drupal-tools
+__pycache__/

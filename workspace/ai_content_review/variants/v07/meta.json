@@ -1,0 +1,7 @@
+{
+  "id": "v07",
+  "parent": "v05",
+  "note": "loop7: get_content_review shows the one title contained in a padded request (\"Summer sale review\") and says so; writes unchanged",
+  "created_at": "2026-11-03T13:12:10Z",
+  "hash": "cc541058a3028daf"
+}

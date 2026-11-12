@@ -1,0 +1,3 @@
+# `tc`, the tool creator harness, on PATH for every shell in the web container (agents included).
+RUN printf '#!/bin/sh\nexec python3 -I /var/www/html/toolcreator/__main__.py "$@"\n' > /usr/local/bin/tc \
+    && chmod 755 /usr/local/bin/tc

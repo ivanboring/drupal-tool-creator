@@ -1,0 +1,11 @@
+name: gitleaks
+repository: Lullabot/ddev-gitleaks
+version: v1.0.0
+install_date: "2026-11-02T10:26:21+01:00"
+project_files:
+    - web-build/Dockerfile.gitleaks
+    - web-build/gitleaks-scan.sh
+    - web-build/gitleaks.toml
+    - config.gitleaks.yaml
+global_files: []
+removal_actions: []

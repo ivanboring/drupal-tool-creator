@@ -1,0 +1,7 @@
+{
+  "id": "v10",
+  "parent": "v08",
+  "note": "loop11: create_review_rule content_types is required; [\"all\"] reviews every type, an empty list is refused (gemma left it out in 2/10 probes)",
+  "created_at": "2026-11-03T19:25:40Z",
+  "hash": "cea6b4392041a9bc"
+}

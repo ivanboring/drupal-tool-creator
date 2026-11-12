@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+## Description: First-time setup: start the project, provision Drupal + the Tool API, capture the clean baseline
+## Usage: setup
+## Example: "ddev setup"
+set -euo pipefail
+cd "$DDEV_APPROOT"
+[ -f .env ] || cp .env.example .env
+bash .ddev/scripts/link-skills.sh
+ddev start
+ddev exec bash site/provision.sh
+echo
+echo "Ready. Open a coding agent at the repo root with:  ddev claude   (or: ddev codex / ddev opencode)"
+echo "Then:  /tool-creator <module>"

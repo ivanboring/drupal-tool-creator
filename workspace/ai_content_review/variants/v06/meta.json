@@ -1,0 +1,7 @@
+{
+  "id": "v06",
+  "parent": "v05",
+  "note": "retry hint is concrete: closest-match failures say 'call the same tool again now with <input> set to \"<value>\"' (gemma retried the same value after 'call again with it')",
+  "created_at": "2026-11-03T09:01:20Z",
+  "hash": "e2ca64b310fc7315"
+}

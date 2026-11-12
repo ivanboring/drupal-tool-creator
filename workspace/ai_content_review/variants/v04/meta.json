@@ -1,0 +1,7 @@
+{
+  "id": "v04",
+  "parent": "v03",
+  "note": "triage/terse looped on decide_suggestion (14 identical calls): a repeated decision now says 'was already X; nothing changed. This suggestion is done.'",
+  "created_at": "2026-11-02T19:51:53Z",
+  "hash": "7bfc860dd75c4329"
+}

@@ -1,0 +1,13 @@
+services:
+  ai_content_review_tools.helper:
+    class: Drupal\ai_content_review_tools\ReviewToolsHelper
+    arguments:
+      - '@entity_type.manager'
+      - '@entity_type.bundle.info'
+      - '@plugin.manager.ai_agents'
+      - '@plugin.manager.review_criterion'
+      - '@ai_content_review.input_hasher'
+      - '@ai_content_review.rule_loader'
+      - '@ai_content_review.record_loader'
+      - '@date.formatter'
+  Drupal\ai_content_review_tools\ReviewToolsHelper: '@ai_content_review_tools.helper'

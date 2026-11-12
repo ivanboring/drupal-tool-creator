@@ -1,0 +1,7 @@
+{
+  "id": "v05",
+  "parent": "v04",
+  "note": "near-miss names: rule and content lookup failures name the closest match (word overlap, or a title contained in the request) and say to call again with it",
+  "created_at": "2026-11-03T08:16:40Z",
+  "hash": "c7ea285a8d9abde7"
+}

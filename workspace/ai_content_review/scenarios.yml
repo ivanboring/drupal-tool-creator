@@ -1,0 +1,500 @@
+# Scenarios for ai_content_review: the jobs its tools must let an agent do.
+#
+# Running a review calls a live AI provider through an AI Agent, and the eval site has none, so
+# no scenario runs a review synchronously. Queueing reviews (pending records, no AI call) is
+# measured instead. Everything else works on rules, records and suggestions seeded in setup:.
+#
+# Shared setup is written once as YAML anchors:
+#   &site   content types (article, page) with a body field, "edit any article content" for the
+#           editor's role (tc_editor), and two AI agents that carry the
+#           "AI Content Review Result" tool (Editorial reviewer, SEO reviewer). ai_agents also
+#           ships three agents without that tool, which a criterion must not use.
+#   &rule   the "Article quality" rule (node:article) with one criterion, Tone & voice (80/60).
+#   &incl   adds a second criterion to it, Inclusive language (85, no warn score).
+#   &sale   the published article "Summer sale" with a Tone & voice record (55) and three
+#           suggestions: a new headline, a passive-voice body fix, a general recommendation.
+agent:
+  max_turns: 15
+users:
+  sitebuilder:
+    permissions:
+      - configure reviews
+      - run batch reviews
+      - view review queue
+      - run reviews
+      - view review records
+      - view review history
+      - access content
+  editor:
+    permissions:
+      - run reviews
+      - view review records
+      - view review history
+      - access content
+      # + "edit any article content", granted by the &site setup: the article type only exists
+      #   once setup has run, after the harness has created this user.
+scenarios:
+  # ---------------------------------------------------------------------------------------------
+  - id: create-rule
+    description: >-
+      Create a review rule for articles with one agent-based criterion. Needs the agent's machine
+      name, looked up from its label.
+    run_as: sitebuilder
+    setup:
+      - &site
+        php: |
+          foreach (['article' => 'Article', 'page' => 'Basic page'] as $id => $label) {
+            if (!\Drupal\node\Entity\NodeType::load($id)) {
+              \Drupal\node\Entity\NodeType::create(['type' => $id, 'name' => $label])->save();
+            }
+          }
+          if (!\Drupal\field\Entity\FieldStorageConfig::loadByName('node', 'body')) {
+            \Drupal\field\Entity\FieldStorageConfig::create(['field_name' => 'body', 'entity_type' => 'node', 'type' => 'text_with_summary'])->save();
+          }
+          foreach (['article', 'page'] as $b) {
+            if (!\Drupal\field\Entity\FieldConfig::loadByName('node', $b, 'body')) {
+              \Drupal\field\Entity\FieldConfig::create(['field_name' => 'body', 'entity_type' => 'node', 'bundle' => $b, 'label' => 'Body'])->save();
+            }
+          }
+          // The editor edits articles (needed to triage and apply suggestions). The harness creates
+          // users before setup runs, when the permission does not exist yet, so grant it here.
+          if ($role = \Drupal\user\Entity\Role::load('tc_editor')) {
+            $role->grantPermission('edit any article content')->save();
+          }
+          $agents = \Drupal::entityTypeManager()->getStorage('ai_agent');
+          foreach (['editorial_reviewer' => 'Editorial reviewer', 'seo_reviewer' => 'SEO reviewer'] as $id => $label) {
+            $agents->create([
+              'id' => $id,
+              'label' => $label,
+              'description' => "$label for AI content reviews: judges one criterion and reports the result.",
+              'system_prompt' => 'You are a content reviewer. Score the content against the criterion in the task and call the AI Content Review Result tool once.',
+              'tools' => ['ai_content_review:content_review_result' => TRUE],
+              'max_loops' => 3,
+            ])->save();
+          }
+          return TRUE;
+    prompts:
+      - "Create an AI content review rule called 'Article quality' for the Article content type. Give it one criterion named 'Tone & voice' that uses the 'Editorial reviewer' AI agent, with these guidelines: 'Warm, plain and approachable. Write in the second person, active voice, short sentences.' Passing score 80, warning score 60."
+      - {id: terse, text: "New review rule 'Article quality' for articles: criterion 'Tone & voice', agent Editorial reviewer, pass 80, warn 60, guidelines 'Warm, plain, second person, active voice.'"}
+      - {id: chatty, text: "We'd like the AI to keep an eye on the tone of our articles. Could you set up a review rule named Article quality that applies to articles, with a Tone & voice criterion handled by the Editorial reviewer agent? It should pass at 80, and warn from 60 up. For the guidelines, tell it: warm, plain and approachable, second person, active voice."}
+      - {id: ui-words, holdout: true, text: "Add Review Rule 'Article quality' for Content of bundle Article. Add Criterion 'Tone & voice' (Agent-based, AI agent: Editorial reviewer, Guidelines & rules: 'Warm, plain and approachable; second person, active voice.', Passing score 80, Warning score 60)."}
+    checks:
+      - name: one enabled rule labelled Article quality targets node articles only
+        php: |
+          $rules = array_filter(\Drupal::entityTypeManager()->getStorage('review_rule')->loadMultiple(),
+            fn($r) => strcasecmp(trim((string) $r->label()), 'Article quality') === 0);
+          if (count($rules) !== 1) { return FALSE; }
+          $r = reset($rules);
+          return $r->status() && $r->getReviewedEntityTypeId() === 'node' && array_values($r->getBundles()) === ['article'];
+      - name: its only criterion is Tone & voice on the Editorial reviewer agent, 80/60, with the guidelines
+        php: |
+          $rules = array_filter(\Drupal::entityTypeManager()->getStorage('review_rule')->loadMultiple(),
+            fn($r) => strcasecmp(trim((string) $r->label()), 'Article quality') === 0);
+          if (count($rules) !== 1) { return FALSE; }
+          $c = reset($rules)->getCriteria();
+          if (count($c) !== 1) { return FALSE; }
+          $c = reset($c);
+          return ($c['plugin_id'] ?? '') === 'agent_based'
+            && preg_match('/tone/i', (string) ($c['label'] ?? ''))
+            && ($c['configuration']['agent_id'] ?? '') === 'editorial_reviewer'
+            && (int) ($c['pass_threshold'] ?? -1) === 80
+            && (int) ($c['warn_threshold'] ?? -1) === 60
+            && stripos((string) ($c['configuration']['prompt_template'] ?? ''), 'second person') !== FALSE;
+      - name: the stored rule passes the module's config validation
+        php: |
+          $rules = array_filter(\Drupal::entityTypeManager()->getStorage('review_rule')->loadMultiple(),
+            fn($r) => strcasecmp(trim((string) $r->label()), 'Article quality') === 0);
+          return count($rules) === 1 && count(reset($rules)->getTypedData()->validate()) === 0;
+
+  # ---------------------------------------------------------------------------------------------
+  - id: add-criterion
+    description: >-
+      Add a second criterion to an existing rule without changing the first one (whose
+      configuration hash links it to its existing review records).
+    run_as: sitebuilder
+    setup:
+      - *site
+      - &rule
+        php: |
+          \Drupal::entityTypeManager()->getStorage('review_rule')->create([
+            'id' => 'article_quality',
+            'label' => 'Article quality',
+            'entity_type' => 'node',
+            'bundles' => ['article'],
+            'criteria' => [[
+              'plugin_id' => 'agent_based',
+              'label' => 'Tone & voice',
+              'acronym' => 'TV',
+              'pass_threshold' => 80,
+              'warn_threshold' => 60,
+              'configuration' => [
+                'agent_id' => 'editorial_reviewer',
+                'prompt_template' => 'Warm, plain and approachable. Second person, active voice, short sentences.',
+                'execution_mode' => 'direct',
+                'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+                'example_groups' => [],
+              ],
+            ]],
+          ])->save();
+          return TRUE;
+    prompts:
+      - "Add a second criterion called 'Inclusive language' to the 'Article quality' review rule. Use the Editorial reviewer agent, passing score 85, and these guidelines: 'Flag gendered, ableist or otherwise exclusionary terms and propose neutral alternatives.'"
+      - {id: terse, text: "Article quality rule: add criterion 'Inclusive language', Editorial reviewer agent, pass 85, guidelines 'Flag exclusionary terms and propose neutral alternatives.'"}
+      - {id: chatty, text: "Besides tone, we also want articles checked for inclusive language. Can you add an 'Inclusive language' check to our Article quality rule? Same Editorial reviewer agent; it should need 85 to pass. Guidelines: flag gendered, ableist or exclusionary terms and suggest neutral alternatives. Keep the tone check exactly as it is."}
+      - {id: indirect, holdout: true, text: "The Article quality rule should also judge inclusive language from now on (criterion name 'Inclusive language', reviewed by the Editorial reviewer, 85 to pass). Its rubric: 'Flag gendered, ableist or exclusionary terms and propose neutral alternatives.'"}
+    checks:
+      - name: the rule now has two criteria and Tone & voice is unchanged
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          if (!$r || count($r->getCriteria()) !== 2) { return FALSE; }
+          $h = \Drupal::service('ai_content_review.input_hasher');
+          $tone = array_values(array_filter($r->getCriteria(), fn($c) => preg_match('/tone/i', (string) ($c['label'] ?? ''))));
+          return count($tone) === 1
+            && $h->hash($tone[0]['configuration']) === $h->hash([
+              'agent_id' => 'editorial_reviewer',
+              'prompt_template' => 'Warm, plain and approachable. Second person, active voice, short sentences.',
+              'execution_mode' => 'direct',
+              'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+              'example_groups' => [],
+            ])
+            && (int) $tone[0]['pass_threshold'] === 80 && (int) $tone[0]['warn_threshold'] === 60;
+      - name: the new criterion is Inclusive language on the Editorial reviewer, pass 85, with the guidelines
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          if (!$r) { return FALSE; }
+          $inc = array_values(array_filter($r->getCriteria(), fn($c) => preg_match('/inclusive/i', (string) ($c['label'] ?? ''))));
+          return count($inc) === 1
+            && ($inc[0]['plugin_id'] ?? '') === 'agent_based'
+            && ($inc[0]['configuration']['agent_id'] ?? '') === 'editorial_reviewer'
+            && (int) ($inc[0]['pass_threshold'] ?? -1) === 85
+            && stripos((string) ($inc[0]['configuration']['prompt_template'] ?? ''), 'exclusionary') !== FALSE;
+      - name: the rule with its two criteria passes the module's config validation
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          return $r && count($r->getCriteria()) === 2 && count($r->getTypedData()->validate()) === 0;
+
+  # ---------------------------------------------------------------------------------------------
+  - id: loosen-threshold
+    description: >-
+      Vague request: make a criterion less strict. Only its pass score may change; its prompt and
+      agent (the input hash) and the other criterion must stay as they are.
+    run_as: sitebuilder
+    setup:
+      - *site
+      - *rule
+      - &incl
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          $criteria = $r->getCriteria();
+          $criteria[] = [
+            'plugin_id' => 'agent_based',
+            'label' => 'Inclusive language',
+            'acronym' => 'IL',
+            'pass_threshold' => 85,
+            'warn_threshold' => NULL,
+            'configuration' => [
+              'agent_id' => 'editorial_reviewer',
+              'prompt_template' => 'Flag gendered, ableist or exclusionary terms and propose neutral alternatives.',
+              'execution_mode' => 'direct',
+              'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+              'example_groups' => [],
+            ],
+          ];
+          $r->set('criteria', $criteria)->save();
+          return TRUE;
+    prompts:
+      - "In the 'Article quality' review rule, lower the passing score of the 'Tone & voice' criterion to 75. Change nothing else."
+      - {id: terse, text: "tone & voice pass mark -> 75"}
+      - {id: vague, text: "The tone checker is way too strict, articles that score 75 keep getting flagged as not passing. Loosen it so a 75 counts as a pass, but don't touch anything else."}
+      - {id: colloquial, holdout: true, text: "our writers keep complaining that Tone & voice fails them at 75. make 75 good enough pls"}
+    checks:
+      - name: Tone & voice passes at 75 (pass score between 60 and 75) and its warn score is still 60
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          if (!$r) { return FALSE; }
+          $tone = array_values(array_filter($r->getCriteria(), fn($c) => preg_match('/tone/i', (string) ($c['label'] ?? ''))));
+          if (count($tone) !== 1) { return FALSE; }
+          $p = $tone[0]['pass_threshold'] ?? NULL;
+          return $p !== NULL && $p >= 60 && $p <= 75 && (int) ($tone[0]['warn_threshold'] ?? -1) === 60;
+      - name: only the pass score moved - Tone & voice asks the AI the same thing (same configuration hash) and Inclusive language is untouched
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('article_quality');
+          if (!$r || count($r->getCriteria()) !== 2) { return FALSE; }
+          $h = \Drupal::service('ai_content_review.input_hasher');
+          $tone = array_values(array_filter($r->getCriteria(), fn($c) => preg_match('/tone/i', (string) ($c['label'] ?? ''))));
+          $inc = array_values(array_filter($r->getCriteria(), fn($c) => preg_match('/inclusive/i', (string) ($c['label'] ?? ''))));
+          return count($tone) === 1 && count($inc) === 1
+            && (int) ($tone[0]['pass_threshold'] ?? 80) !== 80
+            && $h->hash($tone[0]['configuration']) === $h->hash([
+              'agent_id' => 'editorial_reviewer',
+              'prompt_template' => 'Warm, plain and approachable. Second person, active voice, short sentences.',
+              'execution_mode' => 'direct',
+              'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+              'example_groups' => [],
+            ])
+            && (int) $inc[0]['pass_threshold'] === 85
+            && $h->hash($inc[0]['configuration']) === $h->hash([
+              'agent_id' => 'editorial_reviewer',
+              'prompt_template' => 'Flag gendered, ableist or exclusionary terms and propose neutral alternatives.',
+              'execution_mode' => 'direct',
+              'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+              'example_groups' => [],
+            ]);
+
+  # ---------------------------------------------------------------------------------------------
+  - id: disable-rule
+    description: Switch one rule off without deleting it; the other rule stays on.
+    run_as: sitebuilder
+    setup:
+      - *site
+      - *rule
+      - php: |
+          \Drupal::entityTypeManager()->getStorage('review_rule')->create([
+            'id' => 'legal_compliance',
+            'label' => 'Legal compliance',
+            'entity_type' => 'node',
+            'bundles' => ['page'],
+            'criteria' => [[
+              'plugin_id' => 'agent_based',
+              'label' => 'Claims & disclaimers',
+              'pass_threshold' => 90,
+              'warn_threshold' => 70,
+              'configuration' => [
+                'agent_id' => 'editorial_reviewer',
+                'prompt_template' => 'Flag unqualified claims (best, guaranteed, risk-free) and missing disclaimers.',
+                'execution_mode' => 'direct',
+                'provider_config' => ['use_default' => TRUE, 'provider' => '', 'model' => '', 'config' => []],
+                'example_groups' => [],
+              ],
+            ]],
+          ])->save();
+          return TRUE;
+    prompts:
+      - "Disable the 'Legal compliance' review rule. Do not delete it."
+      - {id: terse, text: "turn off legal compliance reviews for now"}
+      - {id: chatty, text: "Legal review is on hold for a few weeks while the lawyers rewrite the guidelines. Can you switch that rule off? We want to keep its setup so we can turn it back on later."}
+      - {id: indirect, holdout: true, text: "Stop the AI from running the Legal compliance checks until further notice. We'll want them back later, so keep the rule."}
+    checks:
+      - name: Legal compliance still exists, is disabled, and its criterion is unchanged
+        php: |
+          $r = \Drupal::entityTypeManager()->getStorage('review_rule')->load('legal_compliance');
+          if (!$r || $r->status()) { return FALSE; }
+          $c = $r->getCriteria();
+          return count($c) === 1 && $c[0]['label'] === 'Claims & disclaimers' && (int) $c[0]['pass_threshold'] === 90;
+      - name: Legal compliance is disabled while Article quality stays enabled
+        php: |
+          $s = \Drupal::entityTypeManager()->getStorage('review_rule');
+          $legal = $s->load('legal_compliance');
+          $article = $s->load('article_quality');
+          return $legal && !$legal->status() && $article && $article->status();
+
+  # ---------------------------------------------------------------------------------------------
+  - id: failing-articles
+    description: >-
+      Read question answered from the latest review records and the criterion's thresholds.
+      "Meet the team" failed an older Tone & voice review but passes the latest one, and it
+      fails Inclusive language; "Opening times" was never reviewed.
+    run_as: editor
+    setup:
+      - *site
+      - *rule
+      - *incl
+      - php: |
+          $etm = \Drupal::entityTypeManager();
+          $rule = $etm->getStorage('review_rule')->load('article_quality');
+          $h = \Drupal::service('ai_content_review.input_hasher');
+          $hash = [];
+          foreach ($rule->getCriteria() as $c) { $hash[$c['label']] = $h->hash($c['configuration']); }
+          $records = $etm->getStorage('review_record');
+          $now = \Drupal::time()->getRequestTime();
+          $plan = [
+            'Summer sale'    => [['Tone & voice', 55, 3600], ['Inclusive language', 90, 3600]],
+            'Meet the team'  => [['Tone & voice', 30, 86400], ['Tone & voice', 92, 600], ['Inclusive language', 50, 600]],
+            'Holiday hours'  => [['Tone & voice', 40, 7200]],
+            'Product launch' => [['Tone & voice', 88, 1800], ['Inclusive language', 95, 1800]],
+            'Opening times'  => [],
+          ];
+          foreach ($plan as $title => $rows) {
+            $node = \Drupal\node\Entity\Node::create(['type' => 'article', 'title' => $title, 'status' => 1, 'uid' => 1]);
+            $node->save();
+            foreach ($rows as [$label, $score, $ago]) {
+              $records->create([
+                'type' => 'internal', 'criterion_id' => 'agent_based', 'criterion_label' => $label,
+                'triggered_by' => 'manual', 'triggered_by_uid' => 1, 'modality' => 'interactive',
+                'input_hash' => $hash[$label], 'status' => 'complete', 'score' => $score,
+                'severity' => $score >= 80 ? 'info' : ($score >= 60 ? 'warning' : 'critical'),
+                'explanation' => "Scored $score for $label.",
+                'entity_type' => 'node', 'entity_id' => $node->id(), 'entity_revision_id' => $node->getRevisionId(),
+                'created' => $now - $ago, 'reviewed_at' => $now - $ago,
+              ])->save();
+            }
+          }
+          return TRUE;
+    prompts:
+      - "Which articles are currently failing the 'Tone & voice' AI review criterion? Tell me how many and list their titles."
+      - {id: terse, text: "how many articles fail tone & voice right now, and which?"}
+      - {id: chatty, text: "I'm planning a rewrite sprint for tone. Based on the latest AI reviews, how many of our articles don't pass Tone & voice, and which ones are they?"}
+      - {id: non-native, holdout: true, text: "Please say me the number of articles which not pass the Tone & voice check at this moment, and the titles of them."}
+    answer_matches: '(?is)^(?=.*\b(2|two)\b)(?=.*summer sale)(?=.*holiday hours)'
+
+  # ---------------------------------------------------------------------------------------------
+  - id: triage-suggestions
+    description: >-
+      Accept one AI suggestion and ignore another on an article's review; the third stays
+      undecided. Accepting is not applying, so the article itself must not change.
+    run_as: editor
+    setup:
+      - *site
+      - *rule
+      - &sale
+        php: |
+          $etm = \Drupal::entityTypeManager();
+          $rule = $etm->getStorage('review_rule')->load('article_quality');
+          $hash = \Drupal::service('ai_content_review.input_hasher')->hash($rule->getCriteria()[0]['configuration']);
+          $node = \Drupal\node\Entity\Node::create([
+            'type' => 'article', 'title' => 'Summer sale', 'status' => 1, 'uid' => 1,
+            'body' => ['value' => 'Our biggest sale of the year starts Monday. Discounts can be claimed by customers at checkout.', 'format' => 'plain_text'],
+          ]);
+          $node->save();
+          \Drupal\node\Entity\Node::create(['type' => 'article', 'title' => 'Meet the team', 'status' => 1, 'uid' => 1])->save();
+          $record = $etm->getStorage('review_record')->create([
+            'type' => 'internal', 'criterion_id' => 'agent_based', 'criterion_label' => 'Tone & voice',
+            'triggered_by' => 'manual', 'triggered_by_uid' => 1, 'modality' => 'interactive',
+            'input_hash' => $hash, 'status' => 'complete', 'score' => 55, 'severity' => 'critical',
+            'explanation' => 'The headline is flat and the body slips into the passive voice.',
+            'entity_type' => 'node', 'entity_id' => $node->id(), 'entity_revision_id' => $node->getRevisionId(),
+            'reviewed_at' => \Drupal::time()->getRequestTime(),
+          ]);
+          $record->save();
+          $ids = [];
+          foreach ([
+            ['text_replace', 'title', 'Summer sale', 'Our summer sale is here', 'A warmer, more personal headline.'],
+            ['text_replace', 'body', 'Discounts can be claimed by customers at checkout.', 'You can claim your discount at checkout.', 'Passive voice; second person reads warmer.'],
+            ['general_recommendation', NULL, NULL, 'End with a line inviting readers to get in touch.', 'The article stops abruptly.'],
+          ] as [$type, $target, $orig, $new, $why]) {
+            $s = $etm->getStorage('suggestion')->create([
+              'review_record' => $record->id(), 'type' => $type, 'target' => $target,
+              'original_value' => $orig, 'suggested_value' => $new, 'rationale' => $why,
+            ]);
+            $s->save();
+            $ids[] = $s->id();
+          }
+          $record->set('suggestions', $ids)->save();
+          return TRUE;
+    prompts:
+      - "On the AI review of the 'Summer sale' article, accept the suggestion for a new headline and ignore the suggestion about the passive-voice sentence. Leave the third suggestion undecided and don't change the article."
+      - {id: terse, text: "Summer sale review: accept the headline suggestion, ignore the passive voice one. leave the rest."}
+      - {id: chatty, text: "I went through the AI's notes on Summer sale. The new headline idea is good, I'll take it later. The passive-voice rewrite is not for us, please dismiss that one. Don't touch the article itself or the other suggestion."}
+      - {id: indirect, holdout: true, text: "For the Summer sale article: mark the headline recommendation as accepted and the passive-voice one as ignored. Nothing else should change."}
+    checks:
+      - name: the headline suggestion is accepted (not applied) and the article is unchanged
+        php: |
+          $s = \Drupal::entityTypeManager()->getStorage('suggestion')->loadByProperties(['suggested_value' => 'Our summer sale is here']);
+          $n = \Drupal::entityTypeManager()->getStorage('node')->loadByProperties(['title' => 'Summer sale']);
+          return count($s) === 1 && reset($s)->getDecision() === 'accepted' && !reset($s)->isApplied()
+            && count($n) === 1 && str_contains((string) reset($n)->get('body')->value, 'Discounts can be claimed by customers');
+      - name: the passive-voice suggestion is ignored and the general recommendation is still undecided
+        php: |
+          $s = \Drupal::entityTypeManager()->getStorage('suggestion')->loadByProperties(['suggested_value' => 'You can claim your discount at checkout.']);
+          $g = \Drupal::entityTypeManager()->getStorage('suggestion')->loadByProperties(['type' => 'general_recommendation']);
+          return count($s) === 1 && reset($s)->getDecision() === 'ignored' && !reset($s)->isApplied()
+            && count($g) === 1 && reset($g)->getDecision() === 'undecided';
+
+  # ---------------------------------------------------------------------------------------------
+  - id: apply-suggestion
+    description: >-
+      Apply one AI suggestion to the article (writes the suggested value and saves the node);
+      the other text suggestion is not applied.
+    run_as: editor
+    setup:
+      - *site
+      - *rule
+      - *sale
+    prompts:
+      - "Apply the AI review's suggested new headline to the 'Summer sale' article."
+      - {id: terse, text: "apply the headline suggestion on Summer sale"}
+      - {id: chatty, text: "The AI had a nicer title idea for our Summer sale article. Can you go ahead and use it? Only the title, leave the body alone."}
+      - {id: ui-words, holdout: true, text: "Summer sale, AI Review tab: click Apply on the recommendation for the title field."}
+    checks:
+      - name: the article's title is now the suggested headline
+        php: |
+          return count(\Drupal::entityTypeManager()->getStorage('node')->loadByProperties(['title' => 'Our summer sale is here'])) === 1
+            && count(\Drupal::entityTypeManager()->getStorage('node')->loadByProperties(['title' => 'Summer sale'])) === 0;
+      - name: the headline suggestion is marked applied
+        php: |
+          $s = \Drupal::entityTypeManager()->getStorage('suggestion')->loadByProperties(['suggested_value' => 'Our summer sale is here']);
+          return count($s) === 1 && reset($s)->isApplied();
+      - name: the body suggestion was not applied
+        php: |
+          $s = \Drupal::entityTypeManager()->getStorage('suggestion')->loadByProperties(['suggested_value' => 'You can claim your discount at checkout.']);
+          $n = \Drupal::entityTypeManager()->getStorage('node')->loadByProperties(['title' => 'Our summer sale is here']);
+          return count($s) === 1 && !reset($s)->isApplied()
+            && count($n) === 1 && str_contains((string) reset($n)->get('body')->value, 'Discounts can be claimed by customers');
+
+  # ---------------------------------------------------------------------------------------------
+  - id: queue-reviews
+    description: >-
+      Queue AI reviews for every published article a rule covers. Queueing creates a pending
+      record and a queue item per article per criterion and calls no AI provider; the
+      unpublished article and the page must not be queued.
+    run_as: sitebuilder
+    setup:
+      - *site
+      - *rule
+      - *incl
+      - php: |
+          foreach ([['article', 'Summer sale', 1], ['article', 'Meet the team', 1], ['article', 'Holiday hours', 1],
+                    ['article', 'Draft: winter plans', 0], ['page', 'About us', 1]] as [$type, $title, $status]) {
+            \Drupal\node\Entity\Node::create(['type' => $type, 'title' => $title, 'status' => $status, 'uid' => 1])->save();
+          }
+          return TRUE;
+    prompts:
+      - "Queue AI reviews for all published articles covered by the 'Article quality' review rule."
+      - {id: terse, text: "queue the article quality reviews for all published articles"}
+      - {id: chatty, text: "We just changed the review guidelines, so I'd like every published article to get re-checked by the Article quality rule overnight. Can you put them all in the review queue?"}
+      - {id: indirect, holdout: true, text: "Send all our live articles through the Article quality AI review in bulk."}
+    checks:
+      - name: every published article has a pending review for both criteria
+        php: |
+          $etm = \Drupal::entityTypeManager();
+          $rule = $etm->getStorage('review_rule')->load('article_quality');
+          $h = \Drupal::service('ai_content_review.input_hasher');
+          foreach (['Summer sale', 'Meet the team', 'Holiday hours'] as $title) {
+            $n = $etm->getStorage('node')->loadByProperties(['title' => $title]);
+            $n = reset($n);
+            foreach ($rule->getCriteria() as $c) {
+              $recs = $etm->getStorage('review_record')->loadByProperties([
+                'type' => 'internal', 'entity_type' => 'node', 'entity_id' => $n->id(),
+                'input_hash' => $h->hash($c['configuration']), 'status' => 'pending',
+              ]);
+              if (count($recs) < 1) { return FALSE; }
+            }
+          }
+          return TRUE;
+      - name: the batch review queue holds exactly one item per published article per criterion (6), none for the unpublished article or the page
+        php: |
+          $etm = \Drupal::entityTypeManager();
+          foreach (['Draft: winter plans', 'About us'] as $title) {
+            $n = $etm->getStorage('node')->loadByProperties(['title' => $title]);
+            $n = reset($n);
+            if ($etm->getStorage('review_record')->loadByProperties(['type' => 'internal', 'entity_type' => 'node', 'entity_id' => $n->id()])) { return FALSE; }
+          }
+          return \Drupal::queue('ai_content_review_batch_review')->numberOfItems() === 6;
+
+  # ---------------------------------------------------------------------------------------------
+  # Judged by the answer only: `tc scenarios check` rejects any check that already passes before
+  # the agent acts, and "the rule is unchanged" necessarily does. A tool that let the editor change
+  # the rule would make the agent report success, which fails answer_matches.
+  - id: editor-cannot-change-rules
+    description: >-
+      Permission case: an editor who may run reviews but not configure them asks to change a
+      threshold. Success is the agent saying it is not allowed (and so not changing the rule).
+    run_as: editor
+    setup:
+      - *site
+      - *rule
+    prompts:
+      - "Lower the passing score of the 'Tone & voice' criterion in the Article quality review rule to 70."
+      - {id: terse, text: "set tone & voice pass score to 70"}
+      - {id: chatty, holdout: true, text: "Honestly the tone check is failing everything I write. Could you just drop its passing score to 70 for me?"}
+    answer_matches: "(?i)(not (allowed|permitted|authori[sz]ed)|permission|access denied|can(no|')t|unable|don't have|do not have|isn't possible|not possible)"

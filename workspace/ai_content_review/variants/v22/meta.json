@@ -1,0 +1,7 @@
+{
+  "id": "v22",
+  "parent": "v20",
+  "note": "loop28: decide_suggestion takes every decision in one call (decisions: [{suggestion_id, decision}]), leave out suggestions left as they are; access covers every suggestion (approved 2026-11-05)",
+  "created_at": "2026-11-05T20:34:22Z",
+  "hash": "18e07b8951b1346b"
+}

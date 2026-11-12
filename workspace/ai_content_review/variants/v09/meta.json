@@ -1,0 +1,7 @@
+{
+  "id": "v09",
+  "parent": "v08",
+  "note": "loop9: content type lookups accept a plural (\"articles\" -> article) when it names exactly one type",
+  "created_at": "2026-11-03T15:24:47Z",
+  "hash": "2dec90719b98fc34"
+}

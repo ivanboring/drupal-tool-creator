@@ -1,0 +1,7 @@
+{
+  "id": "v19",
+  "parent": "v18",
+  "note": "loop22: admin UI names resolve in create_review_rule and the content lookup (entity type 'Content', 'Content'/'Content: Article'/'Article (Content)' in content types, agent 'Editorial reviewer agent'/'AI agent: ...'), unique only; content_types and entity_type descriptions name the UI terms",
+  "created_at": "2026-11-04T19:42:43Z",
+  "hash": "228c0f5893622c33"
+}

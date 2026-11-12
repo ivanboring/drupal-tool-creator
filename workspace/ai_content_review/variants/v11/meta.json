@@ -1,0 +1,7 @@
+{
+  "id": "v11",
+  "parent": "v08",
+  "note": "loop12: content type lookups accept the forms people write (Articles, Article content type, Content: Article, node:article, Article (article)), unique only",
+  "created_at": "2026-11-03T20:12:02Z",
+  "hash": "54df2c13ad2e2959"
+}

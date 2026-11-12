@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+## Description: Run opencode in the web container at the repo root, where the tool creator skills are
+## Usage: opencode [args]
+## Example: "ddev opencode"
+## ExecRaw: true
+cd /var/www/html && exec /usr/local/bin/opencode "$@"

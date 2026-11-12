@@ -1,0 +1,16 @@
+# How the tool creator installs this module and which tools it shows the agent.
+# composer: the package to require (null = already in the site, e.g. a core module)
+# enable:   modules enabled in the module baseline
+# tool_module: the companion module the generated tools live in (workspace/<m>/variants/)
+# expose:   tools the agent sees in an eval: every tool from these providers, plus these ids;
+#           optional order: ids shown first, in that order (the rest follow, sorted by id)
+module: ai_content_review
+composer: drupal/ai_content_review:^1.0@alpha
+enable:
+- ai_content_review
+tool_module: ai_content_review_tools
+expose:
+  providers:
+  - ai_content_review_tools
+  ids: []
+prepared_at: '2026-11-02T14:20:31Z'

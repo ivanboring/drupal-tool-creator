@@ -139,8 +139,8 @@ Open them straight from disk (`file://`), or through the site at
 | `site/` | `provision.sh` and `baseline.sh` (capture/restore filesystem + database). |
 | `drupal/` | The disposable Drupal site (not committed). |
 | `baselines/` | Clean-site and per-module baselines (not committed). |
-| `workspace/<module>/` | Source of truth per module: `module.yml`, `scenarios.yml`, `variants/`, `runs/`, `NOTES.md`, `ITERATIONS.md`, `REPORT.md`, `final/`. |
-| `memory/LEARNINGS.md` | Lessons that carry across modules and sessions. |
+| `workspace/<module>/` | Source of truth per module: `module.yml`, `scenarios.yml`, `variants/`, `runs/`, `NOTES.md`, `ITERATIONS.md`, `REPORT.md`, `final/`. `runs/` and the generated `index.html` pages are not committed. |
+| `memory/LEARNINGS.md` | Lessons that carry across modules and sessions (not committed). |
 
 ## Not a security boundary
 

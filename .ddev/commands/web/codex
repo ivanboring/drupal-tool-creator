@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+## Description: Run codex in the web container at the repo root, where the tool creator skills are
+## Usage: codex [args]
+## Example: "ddev codex"
+## ExecRaw: true
+cd /var/www/html && exec /usr/local/bin/codex "$@"

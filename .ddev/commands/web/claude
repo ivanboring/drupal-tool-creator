@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+## Description: Run claude in the web container at the repo root, where the tool creator skills are
+## Usage: claude [args]
+## Example: "ddev claude"
+## ExecRaw: true
+cd /var/www/html && exec /usr/local/bin/claude "$@"

@@ -1,0 +1,12 @@
+hooks:
+  post-start:
+    # The assistant-claude add-on mirrors ~/.claude/ but not ~/.claude.json (onboarding and account
+    # state), so Claude Code in the container would start with first-run setup. Restore it from the
+    # newest backup Claude Code keeps inside the mirrored ~/.claude/backups/.
+    - exec: |
+        if [ ! -f ~/.claude.json ]; then
+          b="$(ls -t ~/.claude/backups/.claude.json.backup.* 2>/dev/null | head -1)"
+          [ -n "$b" ] && cp "$b" ~/.claude.json && chmod 600 ~/.claude.json || true
+        fi
+    # Skill links (the tool module's skills point into drupal/, which exists only after setup).
+    - exec: "bash /var/www/html/.ddev/scripts/link-skills.sh"
